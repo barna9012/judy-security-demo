@@ -1,56 +1,51 @@
 import streamlit as st
-from openai import OpenAI
+import requests
 
-# Show title and description.
-st.title("💬 Chatbot")
-st.write(
-    "This is a simple chatbot that uses OpenAI's GPT-3.5 model to generate responses. "
-    "To use this app, you need to provide an OpenAI API key, which you can get [here](https://platform.openai.com/account/api-keys). "
-    "You can also learn how to build this app step by step by [following our tutorial](https://docs.streamlit.io/develop/tutorials/llms/build-conversational-apps)."
-)
+# Function to call your API
+def call_api(user_input):
+    api_url = "http://dev-judy-security-demo-alb-1215923742.eu-central-1.elb.amazonaws.com/vulnerabilities"  # Replace with your actual API endpoint
+    headers = {
+        "Content-Type": "application/json"
+    }
+    payload = {"description": user_input}
+    
+    try:
+        response = requests.post(api_url, json=payload, headers=headers)
+        response.raise_for_status()  # Raises an HTTPError for bad responses
 
-# Ask user for their OpenAI API key via `st.text_input`.
-# Alternatively, you can store the API key in `./.streamlit/secrets.toml` and access it
-# via `st.secrets`, see https://docs.streamlit.io/develop/concepts/connections/secrets-management
-openai_api_key = st.text_input("OpenAI API Key", type="password")
-if not openai_api_key:
-    st.info("Please add your OpenAI API key to continue.", icon="🗝️")
-else:
+        # Check if the response is JSON
+        if response.headers.get("Content-Type") == "application/json":
+            return response.json()
+        else:
+            return {"error": "Unexpected response format from API. Expected JSON."}
+    except requests.exceptions.RequestException as e:
+        return {"error": str(e)}
 
-    # Create an OpenAI client.
-    client = OpenAI(api_key=openai_api_key)
+# Streamlit UI
+st.title("API Query Tool")
 
-    # Create a session state variable to store the chat messages. This ensures that the
-    # messages persist across reruns.
-    if "messages" not in st.session_state:
-        st.session_state.messages = []
+# User input form
+user_input = st.text_input("Enter your question:")
 
-    # Display the existing chat messages via `st.chat_message`.
-    for message in st.session_state.messages:
-        with st.chat_message(message["role"]):
-            st.markdown(message["content"])
-
-    # Create a chat input field to allow the user to enter a message. This will display
-    # automatically at the bottom of the page.
-    if prompt := st.chat_input("What is up?"):
-
-        # Store and display the current prompt.
-        st.session_state.messages.append({"role": "user", "content": prompt})
-        with st.chat_message("user"):
-            st.markdown(prompt)
-
-        # Generate a response using the OpenAI API.
-        stream = client.chat.completions.create(
-            model="gpt-3.5-turbo",
-            messages=[
-                {"role": m["role"], "content": m["content"]}
-                for m in st.session_state.messages
-            ],
-            stream=True,
-        )
-
-        # Stream the response to the chat using `st.write_stream`, then store it in 
-        # session state.
-        with st.chat_message("assistant"):
-            response = st.write_stream(stream)
-        st.session_state.messages.append({"role": "assistant", "content": response})
+# Add a "Send" button
+if st.button("Send"):
+    if user_input:
+        # Call API and get response
+        response = call_api(user_input)
+        
+        # Display response from API
+        if "error" in response:
+            st.error(f"Error: {response['error']}")
+        else:
+            st.write("Response from API:")
+            # Display result_1 and result_2 if they exist in the response
+            result_1 = response.get("result_1", "No 'result_1' key found in response")
+            result_2 = response.get("result_2", "No 'result_2' key found in response")
+            
+            st.write("Result 1:")
+            st.json(result_1)
+            
+            st.write("Result 2:")
+            st.json(result_2)
+    else:
+        st.warning("Please enter a question before sending.")
